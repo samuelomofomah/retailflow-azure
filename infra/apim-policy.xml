@@ -1,0 +1,14 @@
+<policies>
+  <inbound>
+    <base />
+    <rate-limit calls="30" renewal-period="60" />
+    <set-header name="x-gateway-secret" exists-action="override"><value>{{gateway-secret}}</value></set-header>
+    <set-header name="x-correlation-id" exists-action="skip"><value>@(context.RequestId.ToString())</value></set-header>
+  </inbound>
+  <backend><base /></backend>
+  <outbound>
+    <base />
+    <set-header name="x-powered-by" exists-action="delete" />
+  </outbound>
+  <on-error><base /></on-error>
+</policies>
