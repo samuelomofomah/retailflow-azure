@@ -74,6 +74,10 @@ resource "azurerm_container_app" "order" {
         name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.app["order-api"].client_id
       }
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = "order-api"
+      }
       dynamic "env" {
         for_each = local.common_env
         content {
@@ -128,6 +132,10 @@ resource "azurerm_container_app" "inventory" {
       env {
         name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.app["inventory-worker"].client_id
+      }
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = "inventory-worker"
       }
       dynamic "env" {
         for_each = local.common_env
@@ -193,9 +201,9 @@ resource "azurerm_api_management_api_policy" "retail" {
 
 resource "azurerm_api_management_product_api" "retail" {
   product_id          = azurerm_api_management_product.channels.product_id
-  api_name            = azurerm_api_management_api.retail.name
   api_management_name = azurerm_api_management.apim.name
   resource_group_name = azurerm_resource_group.rg.name
+  api_name            = azurerm_api_management_api.retail.name
 }
 
 resource "azurerm_api_management_subscription" "web" {

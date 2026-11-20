@@ -5,10 +5,11 @@ from azure.core import MatchConditions
 from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
 from azure.servicebus import ServiceBusClient
 
+logging.basicConfig(level=logging.INFO)               # console + root level first
+logging.getLogger("azure").setLevel(logging.WARNING)  # keep SDK noise out
 if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
     from azure.monitor.opentelemetry import configure_azure_monitor
     configure_azure_monitor()
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("inventory")
 
 cred = DefaultAzureCredential()

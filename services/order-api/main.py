@@ -1,4 +1,4 @@
-import os, json, datetime
+import os, json, datetime, threading, logging
 from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, conint
 from azure.identity import DefaultAzureCredential
@@ -6,6 +6,8 @@ from azure.data.tables import TableServiceClient
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
+logging.basicConfig(level=logging.INFO)               # console + root level first
+logging.getLogger("azure").setLevel(logging.WARNING)  # keep SDK noise out
 if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
     from azure.monitor.opentelemetry import configure_azure_monitor
     configure_azure_monitor()
@@ -13,9 +15,11 @@ if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
 cred = DefaultAzureCredential()
 orders = TableServiceClient(endpoint=os.environ["TABLES_ENDPOINT"], credential=cred).get_table_client("orders")
 sb = ServiceBusClient(os.environ["SB_FQDN"], cred)
+sender = sb.get_topic_sender("orders")      # opened once, reused for every order
+send_lock = threading.Lock()                # a sender isn't thread-safe; FastAPI runs handlers in threads
 GATEWAY_SECRET = os.getenv("GATEWAY_SECRET")
 
-app = FastAPI(title="order-api", version="1.0")
+app = FastAPI(title="order-api", version="2.0")
 
 class Line(BaseModel):
     sku: str
@@ -23,7 +27,7 @@ class Line(BaseModel):
 
 class Order(BaseModel):
     storeId: str
-    channel: str            # web | bopis | store
+    channel: str
     lines: list[Line]
 
 def check_gateway(secret):
@@ -50,11 +54,11 @@ def place_order(order: Order, response: Response, idempotency_key: str = Header(
               "createdAt": datetime.datetime.utcnow().isoformat() + "Z"}
     try:
         orders.create_entity(entity)
-    except ResourceExistsError:                      # retry of the same order: return the original
+    except ResourceExistsError:
         response.status_code = 200
         return to_order(orders.get_entity(idempotency_key, idempotency_key))
     doc = to_order(entity)
-    with sb.get_topic_sender("orders") as sender:
+    with send_lock:
         sender.send_messages(ServiceBusMessage(
             json.dumps(doc), message_id=idempotency_key, subject="OrderPlaced",
             application_properties={"channel": order.channel, "storeId": order.storeId}))
